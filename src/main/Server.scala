@@ -1,6 +1,6 @@
 import org.zeromq.{ ZMQ, ZMQException }, ZMQ.Context
 
-class Server(context: Context, address: String) extends Helpers {
+class Server(context: Context, val address: String) extends Helpers {
   import Server._
 
   val socket = context.socket(ZMQ.REP)

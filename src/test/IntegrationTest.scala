@@ -50,4 +50,10 @@ class IntegrationTest extends FunSuite with Conductors with Timeouts {
     }
     server.close()
   }
+
+  test("bound servers have an address") {
+    val server = new Server(context, "tcp://127.0.0.1:9090")
+    assert(server.address == "tcp://127.0.0.1:9090")
+    server.close()
+  }
 }
