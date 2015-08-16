@@ -1,3 +1,7 @@
+import java.util.concurrent.TimeoutException
+
+import Messages._
+
 import org.nlogo.api._
 import org.nlogo.api.Syntax._
 import org.nlogo.api.ScalaConversions._
@@ -51,8 +55,19 @@ class Report(client: Client) extends DefaultReporter {
   override def report(args: Array[Argument], context: Context): AnyRef = {
     val address  = args(0).getString
     val reporter = args(1).getString
-    val response = client.fetchResponse(address, reporter)
-    Compiler.readFromString(response, is3D = false) // no 3D support (for now)
+    try {
+      client.request(address, Reporter(reporter)) match {
+        case LogoObject(lodump) =>
+          Compiler.readFromString(lodump, is3D = false) // no 3D support (for now)
+        case ExceptionResponse(message) =>
+          throw new ExtensionException("DNL Remote Exception: " + message)
+        case InvalidMessage(message) =>
+          throw new ExtensionException("DNL Internal error: " + message)
+      }
+    } catch {
+      case e: TimeoutException =>
+        new ExtensionException("DNL Timeout: " + e.getMessage)
+    }
   }
 }
 

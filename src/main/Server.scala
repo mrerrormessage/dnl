@@ -1,4 +1,5 @@
 import org.zeromq.{ ZMQ, ZMQException }, ZMQ.Context
+import Messages._
 
 class Server(context: Context, val address: String) extends Helpers {
   import Server._
@@ -7,8 +8,10 @@ class Server(context: Context, val address: String) extends Helpers {
 
   try {
     socket.bind(address)
+    socket.setLinger(0)
   } catch {
     case z: ZMQException =>
+      close()
       throw new BindException("Unable to bind to " + address)
   }
 
@@ -16,6 +19,31 @@ class Server(context: Context, val address: String) extends Helpers {
     val req = socket.recv(0)
     val reqString = fromZMQBytes(req)
     socket.send(toZMQBytes(f(reqString)), 0)
+  }
+
+  def serveResponse(p: PartialFunction[Request, Response]) = {
+    val req = socket.recv(0)
+    val reqString = fromZMQBytes(req)
+    val request = reqString.head match {
+      case 'r' => Some(Reporter(reqString.drop(2)))
+      case 'c' => Some(Command(reqString.drop(2)))
+      case _   => None
+    }
+    val response =
+      try {
+        request.map(p).getOrElse(InvalidMessage(reqString))
+      } catch {
+        case e: Exception => ExceptionResponse(e.getMessage)
+      }
+    socket.send(toZMQBytes(translateResponse(response)), 0)
+  }
+
+  def translateResponse(r: Response): String = {
+    r match {
+      case LogoObject(d)        => "l:" + d
+      case ExceptionResponse(e) => "e:" + e
+      case InvalidMessage(i)    => "i:" + i
+    }
   }
 
   def close(): Unit = {
