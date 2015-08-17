@@ -1,5 +1,7 @@
 import java.util.concurrent.TimeoutException
 
+import java.net.{ Inet4Address, NetworkInterface }
+
 import Messages._
 
 import org.nlogo.api._
@@ -10,6 +12,7 @@ import org.nlogo.compiler.Compiler
 import org.zeromq.ZMQ, ZMQ.{ Context => ZMQContext }
 
 import scala.util.Random
+import scala.collection.JavaConversions._
 
 class DistributedNetLogoExtension extends DefaultClassManager {
   var context = Option.empty[ZMQContext]
@@ -19,7 +22,8 @@ class DistributedNetLogoExtension extends DefaultClassManager {
     val port = 9000 + Random.nextInt(100)
 
     context = Some(ZMQ.context(1))
-    val address = "tcp://127.0.0.1:" + port.toString
+    val ipAddress = networkAddress.getOrElse("127.0.0.1")
+    val address = "tcp://" + ipAddress + ":" + port.toString
     server = context.map(ctx => new ServerThread(ctx, address))
     val client = new Client(context.get)
 
@@ -35,6 +39,15 @@ class DistributedNetLogoExtension extends DefaultClassManager {
     server = None
     context.foreach(_.close())
     context = None
+  }
+
+  private def networkAddress: Option[String] = {
+    val addresses = for {
+      iface   <- NetworkInterface.getNetworkInterfaces
+      address <- iface.getInetAddresses if address.isInstanceOf[Inet4Address] && ! address.isLoopbackAddress
+    } yield address.getHostAddress
+
+    addresses.toList.headOption
   }
 }
 
