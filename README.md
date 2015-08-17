@@ -1,8 +1,36 @@
-# NetLogo Extension Activator Template
+# Distributed NetLogo
+
+## Compiling
+
+## Usage
+
+```
+dnl:info => "tcp://127.0.0.1:9393"
+```
+
+```
+dnl:report "tcp://127.0.0.1:9393" "count sheep" => 57
+```
+
+```
+dnl:command "tcp://127.0.0.1:9393" "ask sheep [set color black]"
+```
+
+### Errors
+
+When the command/reporter is unable to connect to the remote server, you can expect to see an error like:
+
+```
+DNL Timeout: response timeout
+DNL Timeout: unable to connect
+```
+
+When the command/reporter raised an unexpected exception, you can expect to see an error like:
+
+```
+DNL Remote Exception: <text of remote exception>
+```
+
+It is recommended that you handle errors using `carefully`
 
 ## Terms of Use
-
-[![CC0](http://i.creativecommons.org/p/zero/1.0/88x31.png)](http://creativecommons.org/publicdomain/zero/1.0/)
-
-The NetLogo Extension Activator Template is in the public domain.  To the extent possible under law, Uri Wilensky has waived all copyright and related or neighboring rights.
-
