@@ -40,6 +40,7 @@ class Client(context: Context) extends Helpers {
       case 'l' => LogoObject(response)
       case 'e' => ExceptionResponse(response)
       case 'i' => InvalidMessage(response)
+      case 'x' => CommandComplete(response)
     }
   }
 }

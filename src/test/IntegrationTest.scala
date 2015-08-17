@@ -1,5 +1,7 @@
 import java.util.concurrent.{ Semaphore, TimeoutException }
 
+import Messages._
+
 import org.scalatest.{ BeforeAndAfterAll, FunSuite, OneInstancePerTest }
 import org.scalatest.concurrent.AsyncAssertions
 import org.scalatest.time.SpanSugar._
@@ -24,7 +26,7 @@ class IntegrationTest extends FunSuite with AsyncAssertions with BeforeAndAfterA
           case e: Exception =>
             println("exception in thread " + name)
             println(e.toString)
-            throw e
+            w { throw e }
         } finally {
           w.dismiss()
         }
@@ -49,74 +51,72 @@ class IntegrationTest extends FunSuite with AsyncAssertions with BeforeAndAfterA
     f(client)
   }
 
-  test("client server with messages") {
-    import Messages._
-
+  def clientServerTest(name: String, withServerCallback: Server => Unit, withClientCallback: Waiter => Client => Unit): Unit = {
     implicit val w = new Waiter
     implicit val sem = new Semaphore(0)
-    var response: Response = null
 
-    val serverThread = thread("server") {
-      withServer("inproc://testa", _.serveResponse {
-        case Reporter(rep) => LogoObject("53")
-        case _ => fail()
-      })
-    }
-
+    val serverThread = thread("server") { withServer(name, withServerCallback) }
     val clientThread = thread("client") {
-      withClient { client =>
-        response = client.request("inproc://testa", Reporter("count sheep"))
-        w { assert(response == LogoObject("53")) }
-      }
+      withClient(withClientCallback(w))
     }
 
     w.await(dismissals(2))
+  }
+
+  test("client server with messages") {
+    clientServerTest(
+      "inproc://testa",
+      _.serveResponse {
+        case Reporter(rep) => LogoObject("53")
+        case _ => fail()
+      },
+      { (w: Waiter) => { (client: Client) =>
+          val response = client.request("inproc://testa", Reporter("count sheep"))
+          w { assert(response == LogoObject("53")) }
+        } }
+    )
   }
 
   test("client return server exception") {
-    import Messages._
-
-    implicit val w = new Waiter
-    implicit val sem = new Semaphore(0)
-    var response: Response = null
-
-    val serverThread = thread("server") {
-      withServer("inproc://testb", _.serveResponse {
+    clientServerTest(
+      "inproc://testb",
+      _.serveResponse {
         case _ => throw new Exception("problem")
-      })
-    }
-
-    val clientThread = thread("client") {
-      withClient { (client) =>
-        response = client.request("inproc://testb", Reporter("count sheep"))
+      },
+      { (w: Waiter) => { (client: Client) =>
+        val response = client.request("inproc://testb", Reporter("count sheep"))
         w { assert(response == ExceptionResponse("problem")) }
-      }
-    }
-
-    w.await(dismissals(2))
+      }}
+    )
   }
 
   test("client returns invalid message") {
-    import Messages._
-
-    implicit val w = new Waiter
-    implicit val sem = new Semaphore(0)
-    var response: String = null
-
-    val serverThread = thread("server") {
-      withServer("inproc://testc", _.serveResponse {
+    clientServerTest(
+      "inproc://testc",
+      _.serveResponse {
         case _ => throw new Exception("should not get here - indicates invalid server parse of request")
-      })
-    }
-
-    val clientThread = thread("client") {
-      withClient { (client) =>
-        response = client.rawRequest("inproc://testc", "foobar")
+      },
+      { (w: Waiter) => { (client: Client) =>
+        val response = client.rawRequest("inproc://testc", "foobar")
         w { assert(response == "i:foobar") }
       }}
-
-    w.await(dismissals(2))
+    )
   }
+
+  test("client submits command to server") {
+    clientServerTest(
+      "inproc://testd",
+      _.serveResponse {
+        case Command(c) => CommandComplete(c)
+        case _ => throw new Exception("bad request")
+      },
+      { (w: Waiter) => { (client: Client) =>
+        val response = client.request("inproc://testd", Command("ask turtles [die]"))
+         w { assert(response == CommandComplete("ask turtles [die]")) }
+      }}
+      )
+  }
+
 
   test("raises timeout exception when client cannot connect to server") {
     intercept[TimeoutException] {

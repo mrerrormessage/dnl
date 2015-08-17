@@ -43,6 +43,7 @@ class Server(context: Context, val address: String) extends Helpers {
       case LogoObject(d)        => "l:" + d
       case ExceptionResponse(e) => "e:" + e
       case InvalidMessage(i)    => "i:" + i
+      case CommandComplete(c)   => "x:" + c
     }
   }
 

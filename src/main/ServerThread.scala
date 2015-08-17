@@ -22,8 +22,12 @@ class ServerThread(context: Context, address: String) extends Thread {
           val compiledReporter = workspace.compileReporter(rep)
           val reporterResult = workspace.runCompiledReporter(jobOwner, compiledReporter)
           LogoObject(Dump.logoObject(reporterResult, true, true))
-        case Command(com) =>
-          LogoObject(Dump.logoObject("", true, true))
+        case Command(cmd) =>
+          val workspace = App.app.workspace
+          val jobOwner = new SimpleJobOwner("DNL", workspace.world.mainRNG, classOf[Observer])
+          val compiledCommand = workspace.compileCommands(cmd)
+          workspace.runCompiledCommands(jobOwner, compiledCommand)
+          CommandComplete(cmd)
       }
     }
     server.close()
