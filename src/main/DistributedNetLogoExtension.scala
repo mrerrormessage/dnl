@@ -4,9 +4,11 @@ import java.net.{ Inet4Address, NetworkInterface }
 
 import Messages._
 
+import org.nlogo.agent.Observer
 import org.nlogo.api._
 import org.nlogo.api.Syntax._
 import org.nlogo.api.ScalaConversions._
+import org.nlogo.app.App
 import org.nlogo.compiler.Compiler
 
 import org.zeromq.ZMQ, ZMQ.{ Context => ZMQContext }
@@ -24,7 +26,7 @@ class DistributedNetLogoExtension extends DefaultClassManager {
     context = Some(ZMQ.context(1))
     val ipAddress = networkAddress.getOrElse("127.0.0.1")
     val address = "tcp://" + ipAddress + ":" + port.toString
-    server = context.map(ctx => new ServerThread(ctx, address))
+    server = context.map(ctx => new ServerThread(ctx, address, serveNetLogo))
     val client = new Client(context.get)
 
     manager.addPrimitive("info", new Info(address))
@@ -48,6 +50,23 @@ class DistributedNetLogoExtension extends DefaultClassManager {
     } yield address.getHostAddress
 
     addresses.toList.headOption
+  }
+
+  private def serveNetLogo(server: Server): Unit = {
+    server.serveResponse {
+      case Reporter(rep) =>
+        val workspace = App.app.workspace
+        val jobOwner = new SimpleJobOwner("DNL", workspace.world.mainRNG, classOf[Observer])
+        val compiledReporter = workspace.compileReporter(rep)
+        val reporterResult = workspace.runCompiledReporter(jobOwner, compiledReporter)
+        LogoObject(Dump.logoObject(reporterResult, true, true))
+      case Command(cmd) =>
+        val workspace = App.app.workspace
+        val jobOwner = new SimpleJobOwner("DNL", workspace.world.mainRNG, classOf[Observer])
+        val compiledCommand = workspace.compileCommands(cmd)
+        workspace.runCompiledCommands(jobOwner, compiledCommand)
+        CommandComplete(cmd)
+    }
   }
 }
 

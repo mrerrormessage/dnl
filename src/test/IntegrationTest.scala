@@ -13,9 +13,8 @@ class IntegrationTest extends FunSuite with AsyncAssertions with BeforeAndAfterA
 
   override implicit def patienceConfig: PatienceConfig  = PatienceConfig(1 seconds, 50 millis)
 
-  override def afterAll() = {
+  override def afterAll() =
     context.term()
-  }
 
   def thread(name: String)(f:() => Unit)(implicit w: Waiter): Thread = {
     val t = new Thread(new Runnable {
