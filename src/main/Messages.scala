@@ -1,7 +1,8 @@
 object Messages {
   sealed trait Request
-  case class Reporter(reporter: String) extends Request
-  case class Command(command: String)   extends Request
+  case class Reporter(reporter: String)    extends Request
+  case class Command(command: String)      extends Request
+  case class AsyncCommand(command: String) extends Request
 
   sealed trait Response
   case class CommandComplete(cmd: String)       extends Response

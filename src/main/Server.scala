@@ -27,6 +27,7 @@ class Server(context: Context, val address: String) extends Helpers {
     val request = reqString.head match {
       case 'r' => Some(Reporter(reqString.drop(2)))
       case 'c' => Some(Command(reqString.drop(2)))
+      case 'a' => Some(AsyncCommand(reqString.drop(2)))
       case _   => None
     }
     val response =

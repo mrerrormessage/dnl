@@ -29,9 +29,10 @@ class DistributedNetLogoExtension extends DefaultClassManager {
     server = context.map(ctx => new ServerThread(ctx, address, serveNetLogo))
     val client = new Client(context.get)
 
-    manager.addPrimitive("info", new Info(address))
-    manager.addPrimitive("report", new Report(client))
-    manager.addPrimitive("command", new Command(client))
+    manager.addPrimitive("info",         new Info(address))
+    manager.addPrimitive("report",       new Report(client))
+    manager.addPrimitive("command",      new Command(client))
+    manager.addPrimitive("command-sync", new BlockingCommand(client))
 
     server.map(_.start())
   }
@@ -65,6 +66,13 @@ class DistributedNetLogoExtension extends DefaultClassManager {
         val jobOwner = new SimpleJobOwner("DNL", workspace.world.mainRNG, classOf[Observer])
         val compiledCommand = workspace.compileCommands(cmd)
         workspace.runCompiledCommands(jobOwner, compiledCommand)
+        CommandComplete(cmd)
+      case AsyncCommand(cmd) =>
+        val workspace = App.app.workspace
+        val jobOwner = new SimpleJobOwner("DNL", workspace.world.mainRNG, classOf[Observer])
+        val compiledCommand = workspace.compileCommands(cmd)
+        val job = workspace.jobManager.makeConcurrentJob(jobOwner, workspace.world.observers, compiledCommand)
+        workspace.jobManager.addJob(job, waitForCompletion = false)
         CommandComplete(cmd)
     }
   }
@@ -119,6 +127,21 @@ class Report(val client: Client) extends DefaultReporter with ClientProcedure {
 }
 
 class Command(val client: Client) extends DefaultCommand with ClientProcedure {
+  override def getSyntax: Syntax =
+    Syntax.commandSyntax(Array(Syntax.StringType, Syntax.StringType))
+
+  override def getAgentClassString: String = "OTPL"
+
+  override def perform(args: Array[Argument], context: Context): Unit = {
+    val address = args(0).getString
+    val command = args(1).getString
+    clientRequest(address, AsyncCommand(command)) {
+      case CommandComplete(cmd) =>
+    }
+  }
+}
+
+class BlockingCommand(val client: Client) extends DefaultCommand with ClientProcedure {
   override def getSyntax: Syntax =
     Syntax.commandSyntax(Array(Syntax.StringType, Syntax.StringType))
 

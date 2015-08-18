@@ -27,8 +27,9 @@ class Client(context: Context) extends Helpers {
 
   def request(address: String, request: Request): Response = {
     val reqString = request match {
-      case Reporter(rep) => "r:" + rep
-      case Command(cmd)  => "c:" + cmd
+      case Reporter(rep)      => "r:" + rep
+      case Command(cmd)       => "c:" + cmd
+      case AsyncCommand(cmd)  => "a:" + cmd
     }
     translateResponse(rawRequest(address, reqString))
   }

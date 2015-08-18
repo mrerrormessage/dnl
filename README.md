@@ -16,6 +16,11 @@ dnl:report "tcp://127.0.0.1:9393" "count sheep" => 57
 dnl:command "tcp://127.0.0.1:9393" "ask sheep [set color black]"
 ```
 
+```
+;; Synchronous command, does not return until command has finished on remote
+dnl:command-sync "tcp://127.0.0.1:9393" "ask sheep [set color black]"
+```
+
 ### Errors
 
 When the command/reporter is unable to connect to the remote server, you can expect to see an error like:
