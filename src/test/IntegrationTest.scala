@@ -11,7 +11,9 @@ import org.zeromq.ZMQ, ZMQ.Context
 class IntegrationTest extends FunSuite with AsyncAssertions with BeforeAndAfterAll {
   val context = ZMQ.context(1)
 
-  override implicit def patienceConfig: PatienceConfig  = PatienceConfig(1 seconds, 50 millis)
+  val socketManager = new SocketManager(context)
+
+  override implicit def patienceConfig: PatienceConfig = PatienceConfig(1 seconds, 50 millis)
 
   override def afterAll() =
     context.term()
@@ -35,17 +37,23 @@ class IntegrationTest extends FunSuite with AsyncAssertions with BeforeAndAfterA
     t
   }
 
+  def boundServer(name: String): Server = {
+    val sock = socketManager.repSocket(name)
+    sock.bind()
+    new Server(sock)
+  }
+
   def withServer(name: String, f: Server => Unit)(implicit sem: Semaphore): () => Unit =
   { () =>
-    val server = new Server(context, name)
+    val server = boundServer(name)
     sem.release()
     f(server)
-    server.close()
+    server.socket.close()
   }
 
   def withClient(f: Client => Unit)(implicit sem: Semaphore): () => Unit =
   { () =>
-    val client = new Client(context)
+    val client = new Client(socketManager)
     sem.acquire()
     f(client)
   }
@@ -116,32 +124,31 @@ class IntegrationTest extends FunSuite with AsyncAssertions with BeforeAndAfterA
       )
   }
 
-
   test("raises timeout exception when client cannot connect to server") {
     intercept[TimeoutException] {
-      val client = new Client(context)
+      val client = new Client(socketManager)
       client.rawRequest("inproc://nothere", "timeoutreq")
     }
   }
 
   test("raises timeout exception when client cannot connect to tcp server") {
     intercept[TimeoutException] {
-      val client = new Client(context)
+      val client = new Client(socketManager)
       client.rawRequest("tcp://0.0.0.0:10101", "timeouttcpreq")
     }
   }
 
   test("raises a BindException when the port cannot be bound") {
-    val server = new Server(context, "inproc://a")
-    intercept[Server.BindException] {
-      val server2 = new Server(context, "inproc://a")
+    val server = boundServer("inproc://a")
+    intercept[Sockets.BindException] {
+      val server2 = boundServer("inproc://a")
     }
-    server.close()
+    server.socket.close()
   }
 
   test("bound servers have an address") {
-    val server = new Server(context, "tcp://127.0.0.1:9090")
-    assert(server.address == "tcp://127.0.0.1:9090")
-    server.close()
+    val server = boundServer("tcp://127.0.0.1:9090")
+    assert(server.socket.address == "tcp://127.0.0.1:9090")
+    server.socket.close()
   }
 }

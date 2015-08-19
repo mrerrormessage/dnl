@@ -17,8 +17,8 @@ import scala.util.Random
 import scala.collection.JavaConversions._
 
 class DistributedNetLogoExtension extends DefaultClassManager {
-  var context = Option.empty[ZMQContext]
-  var server = Option.empty[ServerThread]
+  var context       = Option.empty[ZMQContext]
+  var server        = Option.empty[ServerThread]
 
   override def load(manager: PrimitiveManager) = {
     val port = 9000 + Random.nextInt(100)
@@ -26,8 +26,9 @@ class DistributedNetLogoExtension extends DefaultClassManager {
     context = Some(ZMQ.context(1))
     val ipAddress = networkAddress.getOrElse("127.0.0.1")
     val address = "tcp://" + ipAddress + ":" + port.toString
-    server = context.map(ctx => new ServerThread(ctx, address, serveNetLogo))
-    val client = new Client(context.get)
+    val socketManager = new SocketManager(context.get)
+    server = context.map(ctx => new ServerThread(socketManager, address, serveNetLogo))
+    val client = new Client(socketManager)
 
     manager.addPrimitive("info",         new Info(address))
     manager.addPrimitive("report",       new Report(client))
@@ -38,7 +39,11 @@ class DistributedNetLogoExtension extends DefaultClassManager {
   }
 
   override def unload(em: ExtensionManager) = {
-    server.foreach(_.close())
+    server.foreach {
+      t =>
+        t.close()
+        t.join(10000)
+    }
     server = None
     context.foreach(_.close())
     context = None
@@ -53,25 +58,22 @@ class DistributedNetLogoExtension extends DefaultClassManager {
     addresses.toList.headOption
   }
 
-  private def serveNetLogo(server: Server): Unit = {
-    server.serveResponse {
+  private def serveNetLogo(m: Request): Response = {
+    val workspace = App.app.workspace
+    val jobOwner = new SimpleJobOwner("DNL", workspace.world.mainRNG, classOf[Observer])
+    m match {
       case Reporter(rep) =>
-        val workspace = App.app.workspace
-        val jobOwner = new SimpleJobOwner("DNL", workspace.world.mainRNG, classOf[Observer])
         val compiledReporter = workspace.compileReporter(rep)
         val reporterResult = workspace.runCompiledReporter(jobOwner, compiledReporter)
         LogoObject(Dump.logoObject(reporterResult, true, true))
       case Command(cmd) =>
-        val workspace = App.app.workspace
-        val jobOwner = new SimpleJobOwner("DNL", workspace.world.mainRNG, classOf[Observer])
         val compiledCommand = workspace.compileCommands(cmd)
         workspace.runCompiledCommands(jobOwner, compiledCommand)
         CommandComplete(cmd)
       case AsyncCommand(cmd) =>
-        val workspace = App.app.workspace
-        val jobOwner = new SimpleJobOwner("DNL", workspace.world.mainRNG, classOf[Observer])
         val compiledCommand = workspace.compileCommands(cmd)
-        val job = workspace.jobManager.makeConcurrentJob(jobOwner, workspace.world.observers, compiledCommand)
+        val job = workspace.jobManager.makeConcurrentJob(
+          jobOwner, workspace.world.observers, compiledCommand)
         workspace.jobManager.addJob(job, waitForCompletion = false)
         CommandComplete(cmd)
     }

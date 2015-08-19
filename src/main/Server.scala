@@ -1,59 +1,47 @@
-import org.zeromq.{ ZMQ, ZMQException }, ZMQ.Context
 import Messages._
+import Sockets.BindableSocket
 
-class Server(context: Context, val address: String) extends Helpers {
-  import Server._
+object Server {
+  type MaybeValidRequest = Either[String, Request]
 
-  val socket = context.socket(ZMQ.REP)
+  def stringToMaybeRequest(s: String) =
+    Request.fromString(s).map(Right.apply).getOrElse(Left(s))
 
-  try {
-    socket.bind(address)
-    socket.setLinger(0)
-  } catch {
-    case z: ZMQException =>
-      close()
-      throw new BindException("Unable to bind to " + address)
-  }
+  def responseToString(r: Response): String =
+    Response.toString(r)
+}
 
-  def serve(f: String => String) = {
-    val req = socket.recv(0)
-    val reqString = fromZMQBytes(req)
-    socket.send(toZMQBytes(f(reqString)), 0)
-  }
+import Server._
 
-  def serveResponse(p: PartialFunction[Request, Response]) = {
-    val req = socket.recv(0)
-    val reqString = fromZMQBytes(req)
-    val request = reqString.head match {
-      case 'r' => Some(Reporter(reqString.drop(2)))
-      case 'c' => Some(Command(reqString.drop(2)))
-      case 'a' => Some(AsyncCommand(reqString.drop(2)))
-      case _   => None
-    }
-    val response =
+class Server(socket: BindableSocket[String, String])
+  extends ComposableServer[MaybeValidRequest, Response](
+    socket,
+    stringToMaybeRequest,
+    responseToString) {
+
+  def serveResponse(p: Request => Response) =
+    serveFunction { eitherStringOrReq =>
       try {
-        request.map(p).getOrElse(InvalidMessage(reqString))
+        eitherStringOrReq match {
+          case Left(s)  => InvalidMessage(s)
+          case Right(m) => p(m)
+        }
       } catch {
         case e: Exception => ExceptionResponse(e.getMessage)
       }
-    socket.send(toZMQBytes(translateResponse(response)), 0)
-  }
-
-  def translateResponse(r: Response): String = {
-    r match {
-      case LogoObject(d)        => "l:" + d
-      case ExceptionResponse(e) => "e:" + e
-      case InvalidMessage(i)    => "i:" + i
-      case CommandComplete(c)   => "x:" + c
     }
-  }
-
-  def close(): Unit = {
-    socket.unbind(address)
-    socket.close()
-  }
 }
 
-object Server {
-  class BindException(message: String) extends RuntimeException(message)
+class ComposableServer[A, B](val socket: BindableSocket[String, String], recvToA: String => A, resultToReply: B => String) {
+  def serve(f: String => String) =
+    socket.send(f(socket.recv().getOrElse("")))
+
+  def serveFunction(p: A => B) =
+    serve(processResponse(_, p))
+
+  def transform[C, D](atoc: A => C, dtob: D => B): ComposableServer[C, D] =
+    new ComposableServer(socket, atoc compose recvToA, resultToReply compose dtob)
+
+  private def processResponse(s: String, f: A => B): String =
+    resultToReply(f(recvToA(s)))
 }

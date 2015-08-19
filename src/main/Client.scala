@@ -1,47 +1,35 @@
+import org.nlogo.api.ExtensionException
+
 import java.util.concurrent.TimeoutException
 
-import org.zeromq.ZMQ, ZMQ.Context
+import Sockets.MappableSocket
 
 import Messages._
 
-class Client(context: Context) extends Helpers {
+class Client(socketManager: SocketManager) {
   def rawRequest(address: String, reporter: String): String = {
-    val reqSocket = context.socket(ZMQ.REQ)
-    reqSocket.setLinger(0)
+    val reqSocket = socketManager.reqSocket(address, {
+      s =>
+        s.setSendTimeOut(3000)
+        s.setReceiveTimeOut(3000)
+    })
     try {
-      reqSocket.connect(address)
-      reqSocket.setSendTimeOut(3000)
-      val sent = reqSocket.send(toZMQBytes(reporter))
-      if (sent) {
-        reqSocket.setReceiveTimeOut(1000)
-        Option(reqSocket.recv()).map(fromZMQBytes)
-          .getOrElse(throw new TimeoutException("response timeout"))
-      }
-      else {
-        throw new TimeoutException("unable to connect")
-      }
+      sendRequest(reqSocket, reporter)
+      reqSocket.recv().getOrElse(throw new TimeoutException("response timeout"))
     } finally {
       reqSocket.close()
     }
   }
 
   def request(address: String, request: Request): Response = {
-    val reqString = request match {
-      case Reporter(rep)      => "r:" + rep
-      case Command(cmd)       => "c:" + cmd
-      case AsyncCommand(cmd)  => "a:" + cmd
-    }
-    translateResponse(rawRequest(address, reqString))
+    val rawResponse = rawRequest(address, Request.toString(request))
+    Response.fromString(rawResponse)
+      .getOrElse(throw new ExtensionException("DNL Unrecognized message: " + rawResponse))
   }
 
-  def translateResponse(r: String): Response = {
-    val (responseType, response) = (r(0), r.drop(2))
-
-    responseType match {
-      case 'l' => LogoObject(response)
-      case 'e' => ExceptionResponse(response)
-      case 'i' => InvalidMessage(response)
-      case 'x' => CommandComplete(response)
+  private def sendRequest(socket: MappableSocket[String, String], reporter: String): Unit = {
+    if (! socket.send(reporter)) {
+      throw new TimeoutException("unable to connect")
     }
   }
 }
