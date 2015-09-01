@@ -35,7 +35,7 @@ class ServerThread(socketManager: SocketManager, address: String, serveFunction:
         poller.poll(1000)
         if (poller.pollin(0))
           server.serveResponse(serveFunction)
-        else {
+        else if (poller.pollin(1)) {
           ctrlSocket.recv() // We know that it's STOP - for now
           ctrlSocket.send("0")
           stopping = true
