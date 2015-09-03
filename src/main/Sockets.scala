@@ -77,4 +77,29 @@ object Sockets {
   MappableSocket[A, B](socket, transformRecv, transformSend) {
     def bind() = socket.prepareReceive()
   }
+
+  case class DNLPoller(
+    protected val openPoller: Int => ZMQ.Poller,
+    protected val callbackMap: Map[Int, () => Unit] = Map(),
+    protected val registrations: Seq[ZMQ.Poller => Unit] = Seq()) {
+
+    def withRegistration(sock: ReceiverSocket[_], callback: () => Unit): DNLPoller = {
+      copy(
+        callbackMap = callbackMap + (registrations.length -> callback),
+        registrations =
+          registrations :+ { (p: ZMQ.Poller) => p.register(sock.socket.socket, ZMQ.Poller.POLLIN); () })
+    }
+
+    def poll(timeout: Int) = {
+      val poller = openPoller(registrations.length)
+      registrations.foreach(_(poller))
+      val inCount = poller.poll(timeout)
+      if (inCount > 0)
+        callbackMap.foreach {
+          case (i, callback) => if (poller.pollin(i)) callback()
+        }
+    }
+  }
+
+
 }
