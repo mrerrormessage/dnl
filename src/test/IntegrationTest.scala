@@ -27,6 +27,7 @@ class IntegrationTest extends FunSuite with AsyncAssertions with BeforeAndAfterA
           case e: Exception =>
             println("exception in thread " + name)
             println(e.toString)
+            e.printStackTrace()
             w { throw e }
         } finally {
           w.dismiss()
@@ -51,10 +52,10 @@ class IntegrationTest extends FunSuite with AsyncAssertions with BeforeAndAfterA
     server.socket.close()
   }
 
-  def withClient(f: Client => Unit)(implicit sem: Semaphore): () => Unit =
+  def withClient(f: Client => Unit, acquireCount: Int = 1)(implicit sem: Semaphore): () => Unit =
   { () =>
     val client = new Client(socketManager)
-    sem.acquire()
+    sem.acquire(acquireCount)
     f(client)
   }
 
@@ -63,9 +64,7 @@ class IntegrationTest extends FunSuite with AsyncAssertions with BeforeAndAfterA
     implicit val sem = new Semaphore(0)
 
     val serverThread = thread("server") { withServer(name, withServerCallback) }
-    val clientThread = thread("client") {
-      withClient(withClientCallback(w))
-    }
+    val clientThread = thread("client") { withClient(withClientCallback(w)) }
 
     w.await(dismissals(2))
   }
@@ -122,6 +121,48 @@ class IntegrationTest extends FunSuite with AsyncAssertions with BeforeAndAfterA
          w { assert(response == CommandComplete("ask turtles [die]")) }
       }}
       )
+  }
+
+  test("client sends request to multiple servers, receives multiple responses") {
+    implicit val w = new Waiter
+    implicit val sem = new Semaphore(0)
+
+    val servers = Seq(1, 2, 3, 4, 5).map { i =>
+      val address = "inproc://multiserver-" + i
+      thread("server-" + i.toString) {
+        try {
+          withServer(address, _.serveResponse {
+            case Reporter(r) =>
+              // sleep so that the test verifies concurrency
+              Thread.sleep(i * 100)
+              LogoObject(i.toString)
+            case _           => throw new Exception("bad request")
+          })
+        } catch {
+          case e: Throwable =>
+            println(e)
+            println(e.getMessage)
+            throw e
+        }
+      }
+    }
+    val client = thread("client") {
+      withClient(
+        acquireCount = 5,
+        f = { (client: Client) =>
+          val serverAddresses = Seq(1, 2, 3, 4, 5).map(i => "inproc://multiserver-" + i)
+          val responses = client.multiRequest(serverAddresses, Reporter("count turtles"))
+          w {
+            Seq(1, 2, 3, 4, 5).foreach(i => assert(responses.contains(LogoObject(i.toString))))
+          }
+        })
+    }
+
+    w.await(dismissals(6))
+  }
+
+  test("client sends request to multiple servers, receives timeouts") {
+    pending
   }
 
   test("raises timeout exception when client cannot connect to server") {

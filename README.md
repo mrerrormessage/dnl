@@ -4,14 +4,19 @@
 
 ## Usage
 
+
+### DNL Administration
 ```
 dnl:info => "tcp://127.0.0.1:9393"
 ```
 
+### Reporters
 ```
 dnl:report "tcp://127.0.0.1:9393" "count sheep" => 57
+dnl:report-concurrent ["tcp://127.0.0.1:9393" "tcp://127.0.0.1:9394"] "count sheep" => [57 67]
 ```
 
+### Commands
 ```
 dnl:command "tcp://127.0.0.1:9393" "ask sheep [set color black]"
 ```
@@ -19,6 +24,8 @@ dnl:command "tcp://127.0.0.1:9393" "ask sheep [set color black]"
 ```
 ;; Synchronous command, does not return until command has finished on remote
 dnl:command-sync "tcp://127.0.0.1:9393" "ask sheep [set color black]"
+;; Synchronous command, does not return until command has finished on all remotes
+dnl:command-concurrent ["tcp://127.0.0.1:9393" "tcp://127.0.0.1:9394"] "ask sheep [ set color black ]"
 ```
 
 ### Errors
