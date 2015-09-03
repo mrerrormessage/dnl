@@ -9,41 +9,44 @@ import Sockets.MappableSocket
 import Messages._
 
 class Client(socketManager: SocketManager) {
-  def requestSocket(address: String) =
+  private def requestSocket(address: String) =
     socketManager.reqSocket(address, {
       s =>
         s.setSendTimeOut(3000)
         s.setReceiveTimeOut(3000)
     })
 
-  def rawRequest(address: String, reporter: String): String = {
-    val reqSocket = requestSocket(address)
+  private def messageSocket(address: String) =
+    requestSocket(address).mapSend(Request.toString).mapRecv(toResponse)
+
+  private def runRequestReply[A, B](message: B, createdSocket: => MappableSocket[A, B]): A = {
+    val sock = createdSocket
     try {
-      sendRequest(reqSocket, reporter)
-      reqSocket.recv().getOrElse(throw new TimeoutException("response timeout"))
+      sendRequest(sock, message)
+      receiveResponse(sock)
     } finally {
-      reqSocket.close()
+      sock.close()
     }
   }
 
-  def request(address: String, req: Request): Response = {
-    val rawResponse = rawRequest(address, Request.toString(req))
-    Response.fromString(rawResponse)
-      .getOrElse(throw new ExtensionException("DNL Unrecognized message: " + rawResponse))
-  }
+  def request(address: String, req: Request): Response =
+    runRequestReply(req, messageSocket(address))
+
+  def rawRequest(address: String, reqString: String): String =
+    runRequestReply(reqString, requestSocket(address))
 
   def multiRequest(addresses: Seq[String], req: Request): Seq[Response] = {
     val results = new MutableMap[String, Response]()
-    val addressToSocketMap = addresses.map(a => (a, requestSocket(a))).toMap
+    val addressToSocketMap = addresses.map(a => (a, messageSocket(a))).toMap
 
     val poller = addressToSocketMap.foldLeft(socketManager.poller) {
       case (poller, (address, socket)) =>
         poller.withRegistration(socket, { () =>
-          results += (address -> Response.fromString(socket.recv().get).get)
+          results += (address -> receiveResponse(socket))
         })
     }
 
-    addressToSocketMap.values.foreach(socket => sendRequest(socket, Request.toString(req)))
+    addressToSocketMap.values.foreach(socket => sendRequest(socket, req))
 
     try {
       while (results.size < addressToSocketMap.size) {
@@ -55,9 +58,15 @@ class Client(socketManager: SocketManager) {
     }
   }
 
-  private def sendRequest(socket: MappableSocket[String, String], reporter: String): Unit = {
-    if (! socket.send(reporter)) {
-      throw new TimeoutException("unable to connect")
-    }
+  private def toResponse(s: String): Response = {
+    Response.fromString(s)
+      .getOrElse(throw new ExtensionException("DNL Unrecognized message: " + s))
   }
+
+  private def sendRequest[A](socket: MappableSocket[_, A], req: A): Unit =
+    if (! socket.send(req))
+      throw new TimeoutException("unable to connect")
+
+  private def receiveResponse[A](socket: MappableSocket[A, _]): A =
+    socket.recv().getOrElse(throw new TimeoutException("response timeout"))
 }

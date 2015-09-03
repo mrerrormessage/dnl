@@ -66,6 +66,18 @@ object Sockets {
     override val transformRecv: Array[Byte] => A,
     override val transformSend: B => Array[Byte])
     extends ReceiverSocket[A] with SenderSocket[B] {
+    def mapSend[C](f: C => B): MappableSocket[A, C] =
+      new MappableSocket(
+        socket,
+        transformRecv,
+        transformSend compose f)
+
+    def mapRecv[C](f: A => C): MappableSocket[C, B] =
+      new MappableSocket(
+        socket,
+        f compose transformRecv,
+        transformSend)
+
     def close() = socket.close()
   }
 
