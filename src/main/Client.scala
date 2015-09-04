@@ -2,7 +2,7 @@ import org.nlogo.api.ExtensionException
 
 import java.util.concurrent.TimeoutException
 
-import scala.collection.mutable.{ HashMap => MutableMap }
+import scala.collection.parallel.CompositeThrowable
 
 import Sockets.MappableSocket
 
@@ -35,28 +35,12 @@ class Client(socketManager: SocketManager) {
   def rawRequest(address: String, reqString: String): String =
     runRequestReply(reqString, requestSocket(address))
 
-  def multiRequest(addresses: Seq[String], req: Request): Seq[Response] = {
-    val results = new MutableMap[String, Response]()
-    val addressToSocketMap = addresses.map(a => (a, messageSocket(a))).toMap
-
-    val poller = addressToSocketMap.foldLeft(socketManager.poller) {
-      case (poller, (address, socket)) =>
-        poller.withRegistration(socket, { () =>
-          results += (address -> receiveResponse(socket))
-        })
-    }
-
-    addressToSocketMap.values.foreach(socket => sendRequest(socket, req))
-
+  def multiRequest(addresses: Seq[String], req: Request): Seq[Response] =
     try {
-      while (results.size < addressToSocketMap.size) {
-        poller.poll(50)
-      }
-      results.values.toSeq
-    } finally {
-      addressToSocketMap.values.foreach(socket => socket.close())
+      addresses.par.map(a => request(a, req)).seq
+    } catch {
+      case c: CompositeThrowable => throw c.throwables.head
     }
-  }
 
   private def toResponse(s: String): Response = {
     Response.fromString(s)
@@ -64,8 +48,9 @@ class Client(socketManager: SocketManager) {
   }
 
   private def sendRequest[A](socket: MappableSocket[_, A], req: A): Unit =
-    if (! socket.send(req))
+    if (! socket.send(req)) {
       throw new TimeoutException("unable to connect")
+    }
 
   private def receiveResponse[A](socket: MappableSocket[A, _]): A =
     socket.recv().getOrElse(throw new TimeoutException("response timeout"))

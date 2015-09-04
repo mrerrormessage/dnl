@@ -162,7 +162,10 @@ class IntegrationTest extends FunSuite with AsyncAssertions with BeforeAndAfterA
   }
 
   test("client sends request to multiple servers, receives timeouts") {
-    pending
+    intercept[TimeoutException] {
+      val client = new Client(socketManager)
+      client.multiRequest(Seq("tcp://0.0.0.0:10102", "tcp://0.0.0.0:10103"), Command("beep"))
+    }
   }
 
   test("raises timeout exception when client cannot connect to server") {
