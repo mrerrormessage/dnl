@@ -19,10 +19,7 @@ class SocketManager(context: Context) {
   def repSocket(address: String, f: ZMQSocket => Unit = (s => ())): BindableSocket[String, String] =
     new BindableSocket(new RepSocketLifecycle(socket(ZMQ.REP, f), address), address, fromZMQBytes, toZMQBytes)
 
-  def pollSocket[A <: ReceiverSocket[_], B <: ReceiverSocket[_]](a: A, b: B): Poller = {
-    val poller = new ZMQ.Poller(2)
-    poller.register(a.socket.socket, ZMQ.Poller.POLLIN)
-    poller.register(b.socket.socket, ZMQ.Poller.POLLIN)
-    poller
-  }
+  def poller: DNLPoller =
+    new DNLPoller(new ZMQ.Poller(_))
+
 }

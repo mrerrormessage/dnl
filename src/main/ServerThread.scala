@@ -27,19 +27,19 @@ class ServerThread(socketManager: SocketManager, address: String, serveFunction:
     val ctrlSocket = socketManager.repSocket(controlAddress)
     ctrlSocket.bind()
     val server = new Server(repSocket)
-    val poller = socketManager.pollSocket(repSocket, ctrlSocket)
+    val poller =
+      socketManager.poller.
+        withRegistration(repSocket, () => server.serveResponse(serveFunction)).
+        withRegistration(ctrlSocket, { () =>
+          ctrlSocket.recv() // We know that it's STOP - for now
+          ctrlSocket.send("0")
+          stopping = true
+        })
 
     while (!stopping) {
       try {
         bound = true
         poller.poll(1000)
-        if (poller.pollin(0))
-          server.serveResponse(serveFunction)
-        else if (poller.pollin(1)) {
-          ctrlSocket.recv() // We know that it's STOP - for now
-          ctrlSocket.send("0")
-          stopping = true
-        }
       } catch {
         case i: InterruptedException =>
           stopping = true
