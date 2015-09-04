@@ -91,7 +91,7 @@ class Info(address: String) extends DefaultReporter {
 trait ClientProcedure {
   def client: Client
 
-  val defaultReponseHandler: PartialFunction[Response, Nothing] = {
+  val defaultResponseHandler: PartialFunction[Response, Nothing] = {
     case LogoObject(lodump) =>
       throw new ExtensionException("DNL Internal error: expected command result, got reporter result " + lodump)
     case ExceptionResponse(message) =>
@@ -102,9 +102,17 @@ trait ClientProcedure {
       throw new ExtensionException("DNL Internal error: expected reporter result, got command result " + cmd)
   }
 
-  def clientRequest[T](address: String, req: Request)(handler: PartialFunction[Response, T]): T = {
+  def clientRequest[T <: AnyRef](arg: Argument, req: Request)(handler: PartialFunction[Response, T]): AnyRef = {
     try {
-      (handler orElse defaultReponseHandler).apply(client.request(address, req))
+      arg.get match {
+        case address:   String   => (handler orElse defaultResponseHandler).apply(client.request(address, req))
+        case addresses: LogoList =>
+          val validAddresses: Seq[String] =
+            addresses.scalaIterator.collect { case s: String => s }.toSeq
+          val responses =
+            client.multiRequest(validAddresses, req).map(handler orElse defaultResponseHandler)
+          LogoList.fromIterator(responses.toIterator)
+      }
     } catch {
       case e: TimeoutException =>
         throw new ExtensionException("DNL Timeout: " + e.getMessage)
@@ -114,14 +122,13 @@ trait ClientProcedure {
 
 class Report(val client: Client) extends DefaultReporter with ClientProcedure {
   override def getSyntax: Syntax =
-    Syntax.reporterSyntax(Array(Syntax.StringType, Syntax.StringType), Syntax.WildcardType)
+    Syntax.reporterSyntax(Array(Syntax.StringType | Syntax.ListType, Syntax.StringType), Syntax.WildcardType)
 
   override def getAgentClassString: String = "OTPL"
 
   override def report(args: Array[Argument], context: Context): AnyRef = {
-    val address  = args(0).getString
     val reporter = args(1).getString
-    clientRequest(address, Reporter(reporter)) {
+    clientRequest(args(0), Reporter(reporter)) {
       case LogoObject(lodump) =>
         Compiler.readFromString(lodump, is3D = false) // no 3D support (for now)
     }
@@ -130,30 +137,30 @@ class Report(val client: Client) extends DefaultReporter with ClientProcedure {
 
 class Command(val client: Client) extends DefaultCommand with ClientProcedure {
   override def getSyntax: Syntax =
-    Syntax.commandSyntax(Array(Syntax.StringType, Syntax.StringType))
+    Syntax.commandSyntax(Array(Syntax.StringType | Syntax.ListType, Syntax.StringType))
 
   override def getAgentClassString: String = "OTPL"
 
   override def perform(args: Array[Argument], context: Context): Unit = {
-    val address = args(0).getString
+
     val command = args(1).getString
-    clientRequest(address, AsyncCommand(command)) {
-      case CommandComplete(cmd) =>
+
+    clientRequest(args(0), AsyncCommand(command)) {
+      case CommandComplete(cmd) => None
     }
   }
 }
 
 class BlockingCommand(val client: Client) extends DefaultCommand with ClientProcedure {
   override def getSyntax: Syntax =
-    Syntax.commandSyntax(Array(Syntax.StringType, Syntax.StringType))
+    Syntax.commandSyntax(Array(Syntax.StringType | Syntax.ListType, Syntax.StringType))
 
   override def getAgentClassString: String = "OTPL"
 
   override def perform(args: Array[Argument], context: Context): Unit = {
-    val address = args(0).getString
     val command = args(1).getString
-    clientRequest(address, Command(command)) {
-      case CommandComplete(cmd) =>
+    clientRequest(args(0), Command(command)) {
+      case CommandComplete(cmd) => None
     }
   }
 }
