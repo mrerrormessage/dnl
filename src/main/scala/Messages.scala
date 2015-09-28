@@ -1,3 +1,5 @@
+package org.nlogo.extensions.dnl
+
 object Messages {
   sealed trait Request
   case class Reporter(reporter: String)    extends Request

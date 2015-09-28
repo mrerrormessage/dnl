@@ -23,7 +23,7 @@ libraryDependencies ++= Seq(
 
 enablePlugins(org.nlogo.build.NetLogoExtension)
 
-netLogoClassManager := "DistributedNetLogoExtension"
+netLogoClassManager := "org.nlogo.extensions.dnl.DistributedNetLogoExtension"
 
 netLogoExtName      := "dnl"
 

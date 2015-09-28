@@ -1,3 +1,5 @@
+package org.nlogo.extensions.dnl
+
 import
   org.zeromq.{ ZMQ, ZMQException },
     ZMQ.{ Socket => ZMQSocket }

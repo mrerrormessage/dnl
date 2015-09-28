@@ -1,3 +1,5 @@
+package org.nlogo.extensions.dnl
+
 import java.util.concurrent.TimeoutException
 
 import java.net.{ Inet4Address, NetworkInterface }

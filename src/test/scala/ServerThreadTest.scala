@@ -1,3 +1,5 @@
+package org.nlogo.extensions.dnl
+
 
 import org.scalatest.{ BeforeAndAfterAll, FunSuite, OneInstancePerTest }
 import org.scalatest.concurrent.Timeouts

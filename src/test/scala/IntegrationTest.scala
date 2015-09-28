@@ -1,3 +1,5 @@
+package org.nlogo.extensions.dnl
+
 import java.util.concurrent.{ Semaphore, TimeoutException }
 
 import Messages._
