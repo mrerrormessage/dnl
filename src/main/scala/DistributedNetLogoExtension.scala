@@ -7,8 +7,10 @@ import java.net.{ Inet4Address, NetworkInterface }
 import Messages._
 
 import org.nlogo.agent.Observer
-import org.nlogo.api._
-import org.nlogo.api.Syntax._
+import org.nlogo.api.{ Argument, Command, Context,
+  Dump, DefaultClassManager, ExtensionException, ExtensionManager,
+  NetLogoLegacyDialect, PrimitiveManager, Reporter, SimpleJobOwner }
+import org.nlogo.core.{ AgentKind, LogoList, Syntax }
 import org.nlogo.api.ScalaConversions._
 import org.nlogo.app.App
 import org.nlogo.compiler.Compiler
@@ -34,7 +36,7 @@ class DistributedNetLogoExtension extends DefaultClassManager {
 
     manager.addPrimitive("info",         new Info(address))
     manager.addPrimitive("report",       new Report(client))
-    manager.addPrimitive("command",      new Command(client))
+    manager.addPrimitive("command",      new DnlCommand(client))
     manager.addPrimitive("command-sync", new BlockingCommand(client))
 
     server.map(_.start())
@@ -62,13 +64,13 @@ class DistributedNetLogoExtension extends DefaultClassManager {
 
   private def serveNetLogo(m: Request): Response = {
     val workspace = App.app.workspace
-    val jobOwner = new SimpleJobOwner("DNL", workspace.world.mainRNG, classOf[Observer])
+    val jobOwner = new SimpleJobOwner("DNL", workspace.world.mainRNG, AgentKind.Observer)
     m match {
       case Reporter(rep) =>
         val compiledReporter = workspace.compileReporter(rep)
         val reporterResult = workspace.runCompiledReporter(jobOwner, compiledReporter)
         LogoObject(Dump.logoObject(reporterResult, true, true))
-      case Command(cmd) =>
+      case SyncCommand(cmd) =>
         val compiledCommand = workspace.compileCommands(cmd)
         workspace.runCompiledCommands(jobOwner, compiledCommand)
         CommandComplete(cmd)
@@ -82,9 +84,8 @@ class DistributedNetLogoExtension extends DefaultClassManager {
   }
 }
 
-class Info(address: String) extends DefaultReporter {
-  override def getSyntax: Syntax = Syntax.reporterSyntax(Syntax.StringType)
-  override def getAgentClassString: String = "OTPL"
+class Info(address: String) extends Reporter {
+  override def getSyntax: Syntax = Syntax.reporterSyntax(ret = Syntax.StringType)
 
   override def report(args: Array[Argument], context: Context): AnyRef =
     address
@@ -122,46 +123,39 @@ trait ClientProcedure {
   }
 }
 
-class Report(val client: Client) extends DefaultReporter with ClientProcedure {
+class Report(val client: Client) extends Reporter with ClientProcedure {
   override def getSyntax: Syntax =
-    Syntax.reporterSyntax(Array(Syntax.StringType | Syntax.ListType, Syntax.StringType), Syntax.WildcardType)
-
-  override def getAgentClassString: String = "OTPL"
+    Syntax.reporterSyntax(right = List(Syntax.StringType | Syntax.ListType, Syntax.CodeBlockType), ret = Syntax.WildcardType)
 
   override def report(args: Array[Argument], context: Context): AnyRef = {
-    val reporter = args(1).getString
-    clientRequest(args(0), Reporter(reporter)) {
+    val reporter = args(1).getCode
+    clientRequest(args(0), Reporter(reporter.map(_.text).mkString(" "))) {
       case LogoObject(lodump) =>
-        Compiler.readFromString(lodump, is3D = false) // no 3D support (for now)
+        // no 3D support (for now)
+        new Compiler(NetLogoLegacyDialect).readFromString(lodump)
     }
   }
 }
 
-class Command(val client: Client) extends DefaultCommand with ClientProcedure {
+class DnlCommand(val client: Client) extends Command with ClientProcedure {
   override def getSyntax: Syntax =
-    Syntax.commandSyntax(Array(Syntax.StringType | Syntax.ListType, Syntax.StringType))
-
-  override def getAgentClassString: String = "OTPL"
+    Syntax.commandSyntax(right = List(Syntax.StringType | Syntax.ListType, Syntax.CodeBlockType))
 
   override def perform(args: Array[Argument], context: Context): Unit = {
-
-    val command = args(1).getString
-
-    clientRequest(args(0), AsyncCommand(command)) {
+    val command = args(1).getCode
+    clientRequest(args(0), AsyncCommand(command.map(_.text).mkString(" "))) {
       case CommandComplete(cmd) => None
     }
   }
 }
 
-class BlockingCommand(val client: Client) extends DefaultCommand with ClientProcedure {
+class BlockingCommand(val client: Client) extends Command with ClientProcedure {
   override def getSyntax: Syntax =
-    Syntax.commandSyntax(Array(Syntax.StringType | Syntax.ListType, Syntax.StringType))
-
-  override def getAgentClassString: String = "OTPL"
+    Syntax.commandSyntax(right = List(Syntax.StringType | Syntax.ListType, Syntax.CodeBlockType))
 
   override def perform(args: Array[Argument], context: Context): Unit = {
-    val command = args(1).getString
-    clientRequest(args(0), Command(command)) {
+    val command = args(1).getCode
+    clientRequest(args(0), SyncCommand(command.map(_.text).mkString(" "))) {
       case CommandComplete(cmd) => None
     }
   }

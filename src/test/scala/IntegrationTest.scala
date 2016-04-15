@@ -115,11 +115,11 @@ class IntegrationTest extends FunSuite with AsyncAssertions with BeforeAndAfterA
     clientServerTest(
       "inproc://testd",
       _.serveResponse {
-        case Command(c) => CommandComplete(c)
-        case _ => throw new Exception("bad request")
+        case SyncCommand(c) => CommandComplete(c)
+        case _              => throw new Exception("bad request")
       },
       { (w: Waiter) => { (client: Client) =>
-        val response = client.request("inproc://testd", Command("ask turtles [die]"))
+        val response = client.request("inproc://testd", SyncCommand("ask turtles [die]"))
          w { assert(response == CommandComplete("ask turtles [die]")) }
       }}
       )
@@ -166,7 +166,7 @@ class IntegrationTest extends FunSuite with AsyncAssertions with BeforeAndAfterA
   test("client sends request to multiple servers, receives timeouts") {
     intercept[TimeoutException] {
       val client = new Client(socketManager)
-      client.multiRequest(Seq("tcp://0.0.0.0:10102", "tcp://0.0.0.0:10103"), Command("beep"))
+      client.multiRequest(Seq("tcp://0.0.0.0:10102", "tcp://0.0.0.0:10103"), SyncCommand("beep"))
     }
   }
 

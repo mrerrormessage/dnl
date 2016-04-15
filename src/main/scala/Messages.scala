@@ -3,7 +3,7 @@ package org.nlogo.extensions.dnl
 object Messages {
   sealed trait Request
   case class Reporter(reporter: String)    extends Request
-  case class Command(command: String)      extends Request
+  case class SyncCommand(command: String)  extends Request
   case class AsyncCommand(command: String) extends Request
 
   object Request {
@@ -12,7 +12,7 @@ object Messages {
 
       s.head match {
         case 'r' => Some(Reporter(request))
-        case 'c' => Some(Command(request))
+        case 'c' => Some(SyncCommand(request))
         case 'a' => Some(AsyncCommand(request))
         case _   => None
       }
@@ -21,7 +21,7 @@ object Messages {
     def toString(r: Request): String = {
       r match {
         case Reporter(rep)      => "r:" + rep
-        case Command(cmd)       => "c:" + cmd
+        case SyncCommand(cmd)   => "c:" + cmd
         case AsyncCommand(cmd)  => "a:" + cmd
       }
     }
